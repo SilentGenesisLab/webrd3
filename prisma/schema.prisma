@@ -1,5 +1,13 @@
-// webrd3 Prisma schema — datasource only.
-// Real data models (User, Conversation, Message, ...) are added in T1.
+// webrd3 Prisma schema — IM core (T1).
+//
+// Business invariants enforced at the application layer (NOT in the DB):
+//   1. A User may have at most one Conversation whose status != CLOSED.
+//      Kept in the app layer (MVP) so this constraint can be relaxed
+//      later without a destructive migration.
+//   2. When Message.senderType = USER, Message.senderId MUST equal
+//      Conversation.userId.
+//   3. When Message.senderType = AGENT, Message.senderId MUST equal
+//      Conversation.agentId (which must be non-null at that point).
 
 generator client {
   provider = "prisma-client-js"
@@ -8,4 +16,42 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum AgentStatus {
+  ONLINE
+  BUSY
+  AWAY
+  OFFLINE
+}
+
+// ---------------------------------------------------------------------------
+// Models — actors
+// ---------------------------------------------------------------------------
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String   @unique
+  nickname  String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Agent {
+  id            String      @id @default(cuid())
+  username      String      @unique
+  passwordHash  String
+  displayName   String
+  avatar        String?
+  status        AgentStatus @default(OFFLINE)
+  maxConcurrent Int         @default(5)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@index([status])
 }
