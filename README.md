@@ -32,7 +32,10 @@ app/
   layout.tsx
   page.tsx
 lib/                          # prisma / socket / oss clients (filled in later tasks)
-prisma/                       # schema.prisma + migrations (filled in T1)
+prisma/
+  schema.prisma               # IM core models (User/Agent/Conversation/Message)
+  migrations/                 # generated SQL migrations (T1: init_im_schema)
+  seed.ts                     # seeds three placeholder agent accounts
 workers/                      # BullMQ workers (filled in T2)
 public/
 ```
@@ -50,6 +53,44 @@ cp .env.example .env
 pnpm dev
 # -> http://localhost:3000
 ```
+
+## Database setup
+
+Once `DATABASE_URL` is pointed at a reachable PostgreSQL instance:
+
+```bash
+# Generate the typed Prisma client (also runs as part of postinstall in CI).
+pnpm db:generate
+
+# Apply migrations in development (runs migrations + regenerates the client).
+pnpm db:migrate
+
+# Apply migrations in production / CI (idempotent, no schema-drift checks).
+pnpm db:deploy
+
+# Seed the three placeholder agent accounts (agent01 / agent02 / agent03).
+pnpm db:seed
+```
+
+### Schema overview (T1 — `init_im_schema`)
+
+| Model | Purpose | Key indexes |
+|---|---|---|
+| `User` | End user (logs in by phone). | `phone` unique |
+| `Agent` | Customer-service agent. | `username` unique, `status` |
+| `Conversation` | 1-to-1 user/agent thread. | `(userId, status)`, `(agentId, status)`, `(status, lastMessageAt)` |
+| `Message` | Conversation message (TEXT/IMAGE/SYSTEM). | `(conversationId, createdAt)` |
+
+**Application-layer invariants** (intentionally not enforced at the DB level so
+they can be relaxed without a destructive migration):
+
+1. A `User` may have at most one `Conversation` whose `status != CLOSED`.
+2. When `Message.senderType = USER`, `Message.senderId` MUST equal `Conversation.userId`.
+3. When `Message.senderType = AGENT`, `Message.senderId` MUST equal `Conversation.agentId`.
+
+The auth module (T2) will replace the seeded plaintext passwords with bcrypt
+hashes; until then `agent01/02/03` exist purely to make local development and
+the QA gate runnable.
 
 ## Required environment variables
 
