@@ -29,6 +29,24 @@ enum AgentStatus {
   OFFLINE
 }
 
+enum ConversationStatus {
+  WAITING
+  ACTIVE
+  CLOSED
+}
+
+enum MessageSenderType {
+  USER
+  AGENT
+  SYSTEM
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  SYSTEM
+}
+
 // ---------------------------------------------------------------------------
 // Models — actors
 // ---------------------------------------------------------------------------
@@ -40,6 +58,8 @@ model User {
   avatar    String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  conversations Conversation[]
 }
 
 model Agent {
@@ -53,5 +73,49 @@ model Agent {
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
 
+  conversations Conversation[]
+
   @@index([status])
+}
+
+// ---------------------------------------------------------------------------
+// Models — conversations & messages
+// ---------------------------------------------------------------------------
+
+model Conversation {
+  id            String             @id @default(cuid())
+  userId        String
+  agentId       String?
+  status        ConversationStatus @default(WAITING)
+  startedAt     DateTime           @default(now())
+  closedAt      DateTime?
+  lastMessageAt DateTime           @default(now())
+
+  user     User      @relation(fields: [userId], references: [id])
+  agent    Agent?    @relation(fields: [agentId], references: [id])
+  messages Message[]
+
+  @@index([userId, status])
+  @@index([agentId, status])
+  @@index([status, lastMessageAt])
+}
+
+model Message {
+  id             String            @id @default(cuid())
+  conversationId String
+  senderType     MessageSenderType
+  // senderId stores user.id when senderType=USER, agent.id when senderType=AGENT,
+  // and the literal string "system" when senderType=SYSTEM. Cross-table FK is
+  // intentionally avoided so the same column can reference either side or
+  // neither — application-layer code is responsible for keeping it in sync
+  // (see invariants 2 and 3 at the top of this file).
+  senderId       String
+  content        String            @db.Text
+  type           MessageType       @default(TEXT)
+  readAt         DateTime?
+  createdAt      DateTime          @default(now())
+
+  conversation Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }
